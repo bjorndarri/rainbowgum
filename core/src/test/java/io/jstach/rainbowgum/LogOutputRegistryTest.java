@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
@@ -68,6 +69,17 @@ class LogOutputRegistryTest {
 		 */
 		var uri = Path.of("logs", "app.log").toAbsolutePath().toUri();
 		assertEquals(uri.toString(), normalize(uri.toString()));
+	}
+
+	@Test
+	void urisLeaveOutOutputsWithoutUri() {
+		var config = LogConfig.builder().build();
+		var registry = config.outputRegistry();
+		registry.provide(LogProviderRef.of(URI.create("stdout:///"))).provide("console", config);
+		// a list output has no URI
+		registry.provide(LogProviderRef.of(URI.create("list:///"))).provide("list", config);
+		assertEquals(Map.of("console", URI.create("stdout:///")), registry.uris());
+		assertThrows(UnsupportedOperationException.class, () -> registry.uris().clear());
 	}
 
 	private static String normalize(String uri) {

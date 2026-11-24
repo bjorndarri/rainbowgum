@@ -3,12 +3,18 @@ package io.jstach.rainbowgum;
 import java.net.URI;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReentrantLock;
+
+import org.jspecify.annotations.Nullable;
 
 import io.jstach.rainbowgum.LogOutput.OutputProvider;
 import io.jstach.rainbowgum.output.ListLogOutput;
@@ -49,15 +55,29 @@ public sealed interface LogOutputRegistry extends OutputProvider permits Default
 	 */
 	public List<LogEvent> flush();
 
+	/**
+	 * The URIs of the outputs this registry has provided, by output name, for finding
+	 * where they write, the log files for example. Only the URIs: an output belongs to
+	 * its appender, so the registry does not hand outputs out. An output without a URI,
+	 * its {@link LogOutput#uri()} throwing {@link UnsupportedOperationException}, is left
+	 * out. The URIs are as the outputs report them, a file output's without the query
+	 * holding its options, and not redacted, so to display one use
+	 * {@link LogProperty#redactUri(URI)}.
+	 * @return an unmodifiable snapshot of the output URIs, ordered by output name.
+	 */
+	public SortedMap<String, URI> uris();
+
 }
 
 final class DefaultOutputRegistry implements LogOutputRegistry {
 
 	/*
-	 * Only the names: an output belongs to its appender, which decides when it is written
-	 * to, flushed and closed, so the registry does not hand outputs out.
+	 * Only the names and URIs: an output belongs to its appender, which decides when it
+	 * is written to, flushed and closed, so the registry does not hand outputs out.
 	 */
 	private final Set<String> names = ConcurrentHashMap.newKeySet();
+
+	private final Map<String, URI> uris = new ConcurrentSkipListMap<>();
 
 	private final Map<String, OutputProvider> providers = new ConcurrentHashMap<>();
 
@@ -118,7 +138,25 @@ final class DefaultOutputRegistry implements LogOutputRegistry {
 		if (!names.add(name)) {
 			throw new IllegalArgumentException("Name is already in use. name = '%s'".formatted(name));
 		}
+		URI uri = uriOrNull(output);
+		if (uri != null) {
+			uris.put(name, uri);
+		}
 		return output;
+	}
+
+	private static @Nullable URI uriOrNull(LogOutput output) {
+		try {
+			return output.uri();
+		}
+		catch (UnsupportedOperationException e) {
+			return null;
+		}
+	}
+
+	@Override
+	public SortedMap<String, URI> uris() {
+		return Collections.unmodifiableSortedMap(new TreeMap<>(uris));
 	}
 
 	static URI normalize(URI uri) {
